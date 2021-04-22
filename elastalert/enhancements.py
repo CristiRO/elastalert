@@ -2,6 +2,8 @@
 from .util import pretty_ts
 from .util import elastalert_logger
 import datetime
+import requests
+import json
 
 class BaseEnhancement(object):
     """ Enhancements take a match dictionary object and modify it in some way to
@@ -28,11 +30,22 @@ class DropMatchException(Exception):
 class FileFilterEnhancement(BaseEnhancement):
     def process(self, match):
         fileName = match['arguments.keyword']
-        if '/' not in fileName:
+        if '/alice/' not in fileName:
             elastalert_logger.info('Dropped down the match with name={}. Reason: it does not appear to be a file.'.format(fileName))
             raise DropMatchException()
 
+        requestData = {"query":{"bool":{"must":[{"match_phrase":{"arguments":{"query":fileName}}},{"match_phrase":{"arguments":{"query":"read"}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}},{"match_phrase":{"arguments":{"query":fileName}}},{"match_phrase":{"arguments":{"query":"read"}}}],"should":[],"must_not":[]}}}
+        headers = {'Content-type': 'application/json'}
+
+        #TODO: this url should be configurable (es_endpoint, es_port, es_index)
+        url = "http://localhost:9200/logstash-new-*/_search"
+
+        response = requests.request(method='get', url=url, data=json.dumps(requestData), headers=headers)
+        numHits = response.json()['hits']['total']
+
         match['file_name'] = match['arguments.keyword']
+        match['occurences'] = numHits
+
         match.pop('arguments.keyword', None)
         match.pop('num_hits', None)
         match.pop('num_matches', None)
