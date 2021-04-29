@@ -53,6 +53,7 @@ class FileFilterEnhancement(BaseEnhancement):
 class WeekendFilterEnhancement(BaseEnhancement):
     def process(self, match):
         dayOfTheWeek = datetime.datetime.today().isoweekday()
+        fileName = match['arguments.keyword']
         if dayOfTheWeek == 6 or dayOfTheWeek == 7:
             elastalert_logger.info('Dropped down the match with name={}. Reason: nobody should work in the weekend!'.format(fileName))
             raise DropMatchException()
