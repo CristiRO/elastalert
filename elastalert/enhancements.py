@@ -4,6 +4,7 @@ from .util import elastalert_logger
 import datetime
 import requests
 import json
+import alienpy.alien as alien
 
 class BaseEnhancement(object):
     """ Enhancements take a match dictionary object and modify it in some way to
@@ -34,6 +35,12 @@ class FileFilterEnhancement(BaseEnhancement):
             elastalert_logger.info('Dropped down the match with name={}. Reason: it does not appear to be a file.'.format(fileName))
             raise DropMatchException()
 
+        alien.setup_logging()
+        j = alien.AliEn()
+        out = j.run('stat ' + fileName)
+        size = out.ansdict['results'][0]['size']
+        # size = 1024 * 100 # temporary for testing
+
         requestData = {"query":{"bool":{"must":[{"match_phrase":{"arguments":{"query":fileName}}},{"match_phrase":{"arguments":{"query":"read"}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}},{"match_phrase":{"arguments":{"query":fileName}}},{"match_phrase":{"arguments":{"query":"read"}}}],"should":[],"must_not":[]}}}
         headers = {'Content-type': 'application/json'}
 
@@ -43,8 +50,16 @@ class FileFilterEnhancement(BaseEnhancement):
         response = requests.request(method='get', url=url, data=json.dumps(requestData), headers=headers)
         numHits = response.json()['hits']['total']
 
+        limit = 1024 * 1024 * 1024 #1GB
+        bandwidth = int(size) * int(numHits)
+        bandwidthInGB = str(round(bandwidth / limit, 2))
+        if bandwidth < limit:
+            elastalert_logger.info('Dropped down the match with name={}. Reason: total bandwidth not exceeded. Bandwidth used={}GB'.format(fileName, bandwidthInGB))
+            raise DropMatchException()
+
         match['file_name'] = match['arguments.keyword']
         match['occurences'] = numHits
+        match['bandwidth_used_GB'] = bandwidthInGB
 
         match.pop('arguments.keyword', None)
         match.pop('num_hits', None)
@@ -53,7 +68,7 @@ class FileFilterEnhancement(BaseEnhancement):
 class WeekendFilterEnhancement(BaseEnhancement):
     def process(self, match):
         dayOfTheWeek = datetime.datetime.today().isoweekday()
-        fileName = match['arguments.keyword']
+        fileName = match['file_name']
         if dayOfTheWeek == 6 or dayOfTheWeek == 7:
             elastalert_logger.info('Dropped down the match with name={}. Reason: nobody should work in the weekend!'.format(fileName))
             raise DropMatchException()

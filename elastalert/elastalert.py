@@ -1157,8 +1157,9 @@ class ElastAlerter(object):
         self.wait_until_responsive(timeout=self.args.timeout)
         self.running = True
         elastalert_logger.info("Starting up")
+        # TODO: the seconds parameter needs to be configurable
         self.scheduler.add_job(self.handle_pending_alerts, 'interval',
-                               seconds=self.run_every.total_seconds(), id='_internal_handle_pending_alerts')
+                               seconds=60, id='_internal_handle_pending_alerts')
         self.scheduler.add_job(self.handle_config_change, 'interval',
                                seconds=self.run_every.total_seconds(), id='_internal_handle_config_change')
         self.scheduler.start()
@@ -1527,6 +1528,8 @@ class ElastAlerter(object):
                 matches = valid_matches
                 if not matches:
                     return None
+                # TODO: this is temporary, this sorting needs to be configurable
+                matches = sorted(valid_matches, key=lambda k: float(k['bandwidth_used_GB']), reverse=True)
 
         # Don't send real alerts in debug mode
         if self.debug:
