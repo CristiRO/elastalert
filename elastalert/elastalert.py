@@ -1529,7 +1529,17 @@ class ElastAlerter(object):
                 if not matches:
                     return None
                 # TODO: this is temporary, this sorting needs to be configurable
-                matches = sorted(valid_matches, key=lambda k: float(k['bandwidth_used_GB']), reverse=True)
+                if 'bandwidth_used_GB' in matches[0]:
+                    matches = sorted(valid_matches, key=lambda k: float(k['bandwidth_used_GB']), reverse=True)
+                    first_5 = matches[:5]
+                    first_5_avg = sum(float(match['bandwidth_used_GB']) for match in first_5) / len(first_5)
+                    res_matches = first_5
+                    for match in matches[5:]:
+                        if float(match['bandwidth_used_GB']) > first_5_avg * 0.1:
+                            res_matches.append(match)
+                        else:
+                            elastalert_logger.info('Dropped down the match with name={}. Reason: total bandwidth requirement not satisfied compared with top 5. Bandwidth used={}GB'.format(match['file_name'], match['bandwidth_used_GB']))
+                    matches = res_matches
 
         # Don't send real alerts in debug mode
         if self.debug:
