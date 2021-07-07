@@ -122,8 +122,8 @@ class UserFileEnhancement(BaseEnhancement):
 
         # Extracting some jobIds
         clientId = response.json()['hits']['hits'][0]['_source']['clientID']
-        # TODO: check jAliEn script why it does not backfill
-        requestData = {"sort":[{"@timestamp":{"order":"desc","unmapped_type":"boolean"}}],"query":{"bool":{"must":[{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}}],"filter":[{"bool":{"filter":[{"bool":{"should":[{"match":{"command":"login"}}],"minimum_should_match":1}},{"bool":{"filter":[{"bool":{"should":[{"query_string":{"fields":["arguments"],"query":"*queueid*"}}],"minimum_should_match":1}},{"bool":{"should":[{"match":{"clientID":clientId}}],"minimum_should_match":1}}]}}]}}],"should":[],"must_not":[]}}}
+        elastalert_logger.info("Searching some jobIds for clientId={} and fileName={}".format(clientId, fileName))
+        requestData = {"sort":[{"@timestamp":{"order":"desc","unmapped_type":"boolean"}}],"query":{"bool":{"must":[{"match_phrase":{"command":{"query":"login"}}},{"match_phrase":{"clientID":{"query":clientId}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}}]}}}
 
         response = requests.request(method='get', url=url, data=json.dumps(requestData), headers=headers)
 
@@ -134,14 +134,18 @@ class UserFileEnhancement(BaseEnhancement):
                 if 'queueid' in s:
                     try:
                         found = re.search('OU=queueid\\\\=(.+?)/resubmission\\\\=(.+?)', s).group(1)
-                        jobIds.append(found)
+                        formatted = '[' + found + '](https://alimonitor.cern.ch/jobs/jdl.jsp?pid=' + found + ")"
+                        jobIds.append(formatted)
                     except AttributeError:
                         found = ''
 
         match['file_name'] = match['arguments.keyword']
         match['occurences'] = numHits
         match['bandwidth_used_GB'] = bandwidthInGB
-        match['last_10_queueIds_of_this_clientID'] = ', '.join(jobIds)
+        if jobIds:
+            match['last_10_queueIds_of_this_clientID'] = ', '.join(jobIds)
+        else:
+            match['last_10_queueIds_of_this_clientID'] = 'No queueId found for clientID={}'.format(clientId)
 
         match.pop('arguments.keyword', None)
         match.pop('num_hits', None)
