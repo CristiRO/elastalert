@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from .util import pretty_ts
 from .util import elastalert_logger
+from .util import elasticsearch_client
 import datetime
 import requests
 import json
@@ -31,6 +32,11 @@ class DropMatchException(Exception):
 
 class FileFilterEnhancement(BaseEnhancement):
     jalienClient = None
+    es_client = None
+
+    def __init__(self, rule):
+        self.rule = rule
+        self.es_client = elasticsearch_client(rule)
 
     def process(self, match):
         fileName = match['arguments.keyword']
@@ -55,11 +61,9 @@ class FileFilterEnhancement(BaseEnhancement):
         requestData = {"query":{"bool":{"must":[{"match_phrase":{"arguments":{"query":fileName}}},{"match_phrase":{"arguments":{"query":"read"}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}},{"match_phrase":{"arguments":{"query":fileName}}},{"match_phrase":{"arguments":{"query":"read"}}}],"should":[],"must_not":[]}}}
         headers = {'Content-type': 'application/json'}
 
-        #TODO: this url should be configurable (es_endpoint, es_port, es_index)
-        url = "http://localhost:9200/logstash-new-*/_search"
+        response = self.es_client.count(index="alicecs1-jalien-*", body=json.dumps(requestData))
 
-        response = requests.request(method='get', url=url, data=json.dumps(requestData), headers=headers)
-        numHits = response.json()['hits']['total']
+        numHits = response['count']
 
         limit = 1024 * 1024 * 1024 * 240 #240GB
         bandwidth = int(size) * int(numHits)
@@ -84,6 +88,11 @@ class FileFilterEnhancement(BaseEnhancement):
 
 class UserFileEnhancement(BaseEnhancement):
     jalienClient = None
+    es_client = None
+
+    def __init__(self, rule):
+        self.rule = rule
+        self.es_client = elasticsearch_client(rule)
 
     def process(self, match):
         fileName = match['arguments.keyword']
@@ -105,13 +114,10 @@ class UserFileEnhancement(BaseEnhancement):
         size = out.ansdict['results'][0]['size']
 
         requestData = {"query":{"bool":{"must":[{"match_phrase":{"arguments":{"query":fileName}}},{"match_phrase":{"arguments":{"query":"read"}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}},{"match_phrase":{"arguments":{"query":fileName}}},{"match_phrase":{"arguments":{"query":"read"}}}],"should":[],"must_not":[]}}}
-        headers = {'Content-type': 'application/json'}
 
-        #TODO: this url should be configurable (es_endpoint, es_port, es_index)
-        url = "http://localhost:9200/logstash-new-*/_search"
+        response = self.es_client.search(index="alicecs1-jalien-*", body=json.dumps(requestData), track_total_hits=True)
 
-        response = requests.request(method='get', url=url, data=json.dumps(requestData), headers=headers)
-        numHits = response.json()['hits']['total']
+        numHits = response['hits']['total']['value']
 
         limit = 24 * 1024 * 1024 * 1024 #24 GB
         bandwidth = int(size) * int(numHits)
@@ -121,14 +127,14 @@ class UserFileEnhancement(BaseEnhancement):
             raise DropMatchException()
 
         # Extracting some jobIds
-        clientId = response.json()['hits']['hits'][0]['_source']['clientID']
+        clientId = response['hits']['hits'][0]['_source']['clientID']
         elastalert_logger.info("Searching some jobIds for clientId={} and fileName={}".format(clientId, fileName))
         requestData = {"sort":[{"@timestamp":{"order":"desc","unmapped_type":"boolean"}}],"query":{"bool":{"must":[{"match_phrase":{"command":{"query":"login"}}},{"match_phrase":{"clientID":{"query":clientId}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}}]}}}
 
-        response = requests.request(method='get', url=url, data=json.dumps(requestData), headers=headers)
+        response = self.es_client.search(index="alicecs1-jalien-*", body=json.dumps(requestData))
 
         jobIds = []
-        for hit in response.json()['hits']['hits']:
+        for hit in response['hits']['hits']:
             argument = hit['_source']['arguments'][0]
             for s in argument.split(","):
                 if 'queueid' in s:
