@@ -113,7 +113,7 @@ class UserFileEnhancement(BaseEnhancement):
 
         requestData = {"query":{"bool":{"must":[{"match_phrase":{"file_path":{"query":fileName}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}},{"match_phrase":{"file_path":{"query":fileName}}}],"should":[],"must_not":[]}}}
 
-        response = self.es_client.search(index="alicecs1-jalien-*", body=json.dumps(requestData), track_total_hits=True)
+        response = self.es_client.search(index="popularity*", body=json.dumps(requestData), track_total_hits=True)
 
         numHits = response['hits']['total']['value']
 
