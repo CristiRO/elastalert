@@ -36,12 +36,7 @@ class FileFilterEnhancement(BaseEnhancement):
 
     def __init__(self, rule):
         self.rule = rule
-
-        conf = {}
-        conf['es_host'] = 'alice-logstash.cern.ch'
-        conf['es_port'] = '9200'
-        conf['es_conn_timeout'] = 600
-        self.es_client = elasticsearch_client(conf)
+        self.es_client = elasticsearch_client(self.rule)
 
     def process(self, match):
         fileName = match['file_path.keyword']
@@ -62,11 +57,9 @@ class FileFilterEnhancement(BaseEnhancement):
 
         size = out.ansdict['results'][0]['size']
 
-        #TODO: instead of using requests, elasticsearch client should be used, as in the main class of ElastAlert
-        requestData = {"query":{"bool":{"must":[{"match_phrase":{"arguments":{"query":fileName}}},{"match_phrase":{"arguments":{"query":"read"}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}},{"match_phrase":{"arguments":{"query":fileName}}},{"match_phrase":{"arguments":{"query":"read"}}}],"should":[],"must_not":[]}}}
-        headers = {'Content-type': 'application/json'}
+        requestData = {"query":{"bool":{"must":[{"match_phrase":{"file_path":{"query":fileName}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}},{"match_phrase":{"file_path":{"query":fileName}}}],"should":[],"must_not":[]}}}
 
-        response = self.es_client.count(index="alicecs1-jalien-*", body=json.dumps(requestData))
+        response = self.es_client.count(index="popularity*", body=json.dumps(requestData))
 
         numHits = response['count']
 
@@ -97,12 +90,7 @@ class UserFileEnhancement(BaseEnhancement):
 
     def __init__(self, rule):
         self.rule = rule
-
-        conf = {}
-        conf['es_host'] = 'alice-logstash.cern.ch'
-        conf['es_port'] = '9200'
-        conf['es_conn_timeout'] = 600
-        self.es_client = elasticsearch_client(conf)
+        self.es_client = elasticsearch_client(self.rule)
 
     def process(self, match):
         fileName = match['file_path.keyword']
@@ -123,7 +111,7 @@ class UserFileEnhancement(BaseEnhancement):
             raise DropMatchException()
         size = out.ansdict['results'][0]['size']
 
-        requestData = {"query":{"bool":{"must":[{"match_phrase":{"arguments":{"query":fileName}}},{"match_phrase":{"arguments":{"query":"read"}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}},{"match_phrase":{"arguments":{"query":fileName}}},{"match_phrase":{"arguments":{"query":"read"}}}],"should":[],"must_not":[]}}}
+        requestData = {"query":{"bool":{"must":[{"match_phrase":{"file_path":{"query":fileName}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}},{"match_phrase":{"file_path":{"query":fileName}}}],"should":[],"must_not":[]}}}
 
         response = self.es_client.search(index="alicecs1-jalien-*", body=json.dumps(requestData), track_total_hits=True)
 
@@ -137,31 +125,32 @@ class UserFileEnhancement(BaseEnhancement):
             raise DropMatchException()
 
         # Extracting some jobIds
-        clientId = response['hits']['hits'][0]['_source']['clientID']
-        elastalert_logger.info("Searching some jobIds for clientId={} and fileName={}".format(clientId, fileName))
-        requestData = {"sort":[{"@timestamp":{"order":"desc","unmapped_type":"boolean"}}],"query":{"bool":{"must":[{"match_phrase":{"command":{"query":"login"}}},{"match_phrase":{"clientID":{"query":clientId}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}}]}}}
+        # clientId = response['hits']['hits'][0]['_source']['clientID']
+        # elastalert_logger.info("Searching some jobIds for clientId={} and fileName={}".format(clientId, fileName))
+        # requestData = {"sort":[{"@timestamp":{"order":"desc","unmapped_type":"boolean"}}],"query":{"bool":{"must":[{"match_phrase":{"command":{"query":"login"}}},{"match_phrase":{"clientID":{"query":clientId}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}}]}}}
 
-        response = self.es_client.search(index="alicecs1-jalien-*", body=json.dumps(requestData))
+        # response = self.es_client.search(index="alicecs1-jalien-*", body=json.dumps(requestData))
 
-        jobIds = []
-        for hit in response['hits']['hits']:
-            argument = hit['_source']['arguments'][0]
-            for s in argument.split(","):
-                if 'queueid' in s:
-                    try:
-                        found = re.search('OU=queueid\\\\=(.+?)/resubmission\\\\=(.+?)', s).group(1)
-                        formatted = '[' + found + '](https://alimonitor.cern.ch/jobs/jdl.jsp?pid=' + found + ")"
-                        jobIds.append(formatted)
-                    except AttributeError:
-                        found = ''
+        # jobIds = []
+        # for hit in response['hits']['hits']:
+        #     argument = hit['_source']['arguments'][0]
+        #     for s in argument.split(","):
+        #         if 'queueid' in s:
+        #             try:
+        #                 found = re.search('OU=queueid\\\\=(.+?)/resubmission\\\\=(.+?)', s).group(1)
+        #                 formatted = '[' + found + '](https://alimonitor.cern.ch/jobs/jdl.jsp?pid=' + found + ")"
+        #                 jobIds.append(formatted)
+        #             except AttributeError:
+        #                 found = ''
 
         match['file_name'] = match['file_path.keyword']
         match['occurences'] = numHits
         match['bandwidth_used_GB'] = bandwidthInGB
-        if jobIds:
-            match['last_10_queueIds_of_this_clientID'] = ', '.join(jobIds)
-        else:
-            match['last_10_queueIds_of_this_clientID'] = 'No queueId found for clientID={}'.format(clientId)
+        # if jobIds:
+        #     match['last_10_queueIds_of_this_clientID'] = ', '.join(jobIds)
+        # else:
+        #     match['last_10_queueIds_of_this_clientID'] = 'No queueId found for clientID={}'.format(clientId)
+        match['last_10_queueIds_of_this_clientID'] = 'QueueID temporary disabled'
 
         match.pop('file_path.keyword', None)
         match.pop('num_hits', None)
