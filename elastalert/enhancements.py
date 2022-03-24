@@ -40,7 +40,7 @@ class FileFilterEnhancement(BaseEnhancement):
         conf = {}
         conf['es_host'] = 'alice-logstash.cern.ch'
         conf['es_port'] = '9200'
-        conf['es_conn_timeout'] = '600'
+        conf['es_conn_timeout'] = 600
         self.es_client = elasticsearch_client(conf)
 
     def process(self, match):
@@ -101,7 +101,7 @@ class UserFileEnhancement(BaseEnhancement):
         conf = {}
         conf['es_host'] = 'alice-logstash.cern.ch'
         conf['es_port'] = '9200'
-        conf['es_conn_timeout'] = '600'
+        conf['es_conn_timeout'] = 600
         self.es_client = elasticsearch_client(conf)
 
     def process(self, match):
