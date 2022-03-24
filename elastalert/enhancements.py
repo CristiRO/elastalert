@@ -36,10 +36,15 @@ class FileFilterEnhancement(BaseEnhancement):
 
     def __init__(self, rule):
         self.rule = rule
-        self.es_client = elasticsearch_client(rule)
+
+        conf = {}
+        conf['es_host'] = 'alice-logstash.cern.ch'
+        conf['es_port'] = '9200'
+        conf['es_conn_timeout'] = '600'
+        self.es_client = elasticsearch_client(conf)
 
     def process(self, match):
-        fileName = match['arguments.keyword']
+        fileName = match['file_path.keyword']
         if not self.isFile(fileName):
             elastalert_logger.info('Dropped down the match with name={}. Reason: it does not appear to be a file.'.format(fileName))
             raise DropMatchException()
@@ -72,11 +77,11 @@ class FileFilterEnhancement(BaseEnhancement):
             elastalert_logger.info('Dropped down the match with name={}. Reason: total bandwidth not exceeded. Bandwidth used={}GB'.format(fileName, bandwidthInGB))
             raise DropMatchException()
 
-        match['file_name'] = match['arguments.keyword']
+        match['file_name'] = match['file_path.keyword']
         match['occurences'] = numHits
         match['bandwidth_used_GB'] = bandwidthInGB
 
-        match.pop('arguments.keyword', None)
+        match.pop('file_path.keyword', None)
         match.pop('num_hits', None)
         match.pop('num_matches', None)
 
@@ -92,10 +97,15 @@ class UserFileEnhancement(BaseEnhancement):
 
     def __init__(self, rule):
         self.rule = rule
-        self.es_client = elasticsearch_client(rule)
+
+        conf = {}
+        conf['es_host'] = 'alice-logstash.cern.ch'
+        conf['es_port'] = '9200'
+        conf['es_conn_timeout'] = '600'
+        self.es_client = elasticsearch_client(conf)
 
     def process(self, match):
-        fileName = match['arguments.keyword']
+        fileName = match['file_path.keyword']
 
         if not self.isFile(fileName):
             elastalert_logger.info('Dropped down the match with name={}. Reason: it does not appear to be a file.'.format(fileName))
@@ -145,7 +155,7 @@ class UserFileEnhancement(BaseEnhancement):
                     except AttributeError:
                         found = ''
 
-        match['file_name'] = match['arguments.keyword']
+        match['file_name'] = match['file_path.keyword']
         match['occurences'] = numHits
         match['bandwidth_used_GB'] = bandwidthInGB
         if jobIds:
@@ -153,7 +163,7 @@ class UserFileEnhancement(BaseEnhancement):
         else:
             match['last_10_queueIds_of_this_clientID'] = 'No queueId found for clientID={}'.format(clientId)
 
-        match.pop('arguments.keyword', None)
+        match.pop('file_path.keyword', None)
         match.pop('num_hits', None)
         match.pop('num_matches', None)
 
