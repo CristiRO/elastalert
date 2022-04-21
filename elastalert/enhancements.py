@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from fileinput import filename
 from .util import pretty_ts
 from .util import elastalert_logger
 from .util import elasticsearch_client
@@ -125,6 +126,27 @@ class UserFileEnhancement(BaseEnhancement):
             raise DropMatchException()
 
         # Extracting some jobIds
+        requestDataFirstPhase = {"query":{"bool":{"filter":[{"bool":{"filter":[{"bool":{"minimum_should_match":1,"should":[{"match_phrase":{"arguments.keyword":fileName}}]}},{"bool":{"minimum_should_match":1,"should":[{"bool":{"minimum_should_match":1,"should":[{"match_phrase":{"command.keyword":"PFNforReadOrDel"}}]}},{"bool":{"minimum_should_match":1,"should":[{"match_phrase":{"command.keyword":"access"}}]}}]}}]}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now"}}}],"must":[],"must_not":[],"should":[]}},"collapse":{"field":"address.keyword","inner_hits":{"name":"latest","size":1,"sort":[{"@timestamp":"desc"}],"_source":"false","docvalue_fields":["address.keyword"]}}}
+        elastalert_logger.info("Searching collapsed results for different adresses of fileName={}".format(filename))
+
+        response = self.es_client.search(index="logstash-new-*", body=json.dumps(requestDataFirstPhase))
+
+        jobIds = []
+        for hit in response['hits']['hits']:
+            address = hit['fields']['address.keyword'][0]
+            elastalert_logger.info("Got address={} for fileName={}. Searching for jobId...".format(address, fileName))
+            requestDataSecondPhase = {"query":{"bool":{"filter":[{"bool":{"filter":[{"bool":{"minimum_should_match":1,"should":[{"match_phrase":{"address.keyword":address}}]}},{"bool":{"minimum_should_match":1,"should":[{"match_phrase":{"command.keyword":"login"}}]}}]}},{"range":{"@timestamp":{"gte":"now-2d","lte":"now"}}}],"must":[],"must_not":[],"should":[]}}}
+            innerResponse = self.es_client.search(index="logstash-new-*", body=json.dumps(requestDataSecondPhase))
+            rawArgument = innerResponse['hits']['hits'][0]['_source']['arguments'][0]
+            for s in rawArgument.split(","):
+                if 'queueid' in s:
+                    try:
+                        found = re.search('OU=queueid\\\\=(.+?)/resubmission\\\\=(.+?)', s).group(1)
+                        formatted = '[' + found + '](https://alimonitor.cern.ch/jobs/jdl.jsp?pid=' + found + ")"
+                        jobIds.append(formatted)
+                    except AttributeError:
+                        found = ''
+
         # clientId = response['hits']['hits'][0]['_source']['clientID']
         # elastalert_logger.info("Searching some jobIds for clientId={} and fileName={}".format(clientId, fileName))
         # requestData = {"sort":[{"@timestamp":{"order":"desc","unmapped_type":"boolean"}}],"query":{"bool":{"must":[{"match_phrase":{"command":{"query":"login"}}},{"match_phrase":{"clientID":{"query":clientId}}},{"range":{"@timestamp":{"gte":"now-1d","lte":"now","format":"epoch_millis"}}}]}}}
@@ -146,11 +168,11 @@ class UserFileEnhancement(BaseEnhancement):
         match['file_name'] = match['file_path.keyword']
         match['occurences'] = numHits
         match['bandwidth_used_GB'] = bandwidthInGB
-        # if jobIds:
-        #     match['last_10_queueIds_of_this_clientID'] = ', '.join(jobIds)
-        # else:
-        #     match['last_10_queueIds_of_this_clientID'] = 'No queueId found for clientID={}'.format(clientId)
-        match['last_10_queueIds_of_this_clientID'] = 'QueueID temporary disabled'
+        if jobIds:
+            match['last_10_queueIds_of_this_clientID'] = ', '.join(jobIds)
+        else:
+            match['last_10_queueIds_of_this_clientID'] = 'No queueId found.'
+        # match['last_10_queueIds_of_this_clientID'] = 'QueueID temporary disabled'
 
         match.pop('file_path.keyword', None)
         match.pop('num_hits', None)
